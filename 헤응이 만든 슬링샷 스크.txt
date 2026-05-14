@@ -1,0 +1,178 @@
+-- [[ Rivals 전용 하이엔드 + 플라이 + 스핀 - GPDMD KOREA ]] --
+
+local g = game
+local plrs = g:GetService("Players")
+local rs = g:GetService("RunService")
+local lp = plrs.LocalPlayer
+local uis = game:GetService("UserInputService")
+
+-- [ Fluent UI 라이브러리 로드 ]
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+
+-- [ UI 창 생성 ]
+local Window = Fluent:CreateWindow({
+    Title = "GPDMD Rivals 하이엔드",
+    SubTitle = "by 헤응 (Premium Edition)",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(580, 500),
+    Acrylic = true,
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.RightShift
+})
+
+-- [ 탭 생성 ]
+local Tabs = {
+    Combat = Window:AddTab({ Title = "전투", Icon = "crosshair" }),
+    Movement = Window:AddTab({ Title = "이동/디싱크", Icon = "move" }),
+    Settings = Window:AddTab({ Title = "설정", Icon = "settings" })
+}
+
+-- [ 변수 설정 ]
+local idk = false -- 월뱅
+local FlyEnabled = false
+local FlySpeed = 50
+local SpinEnabled = false
+local SpinSpeed = 50
+
+-- [ 자동 획득 설정 값 ]
+local collectHealth = true
+local collectAmmo = true
+
+-- [[ 1. 전투 기능 (기존 월뱅 로직) ]] --
+local WallBangToggle = Tabs.Combat:AddToggle("WallBangV2", {
+    Title = "투사체 월뱅 (자동 유도)",
+    Default = false,
+    Description = "활, 단검 등이 벽을 뚫고 적의 머리에 꽂힙니다."
+})
+WallBangToggle:OnChanged(function(Value) idk = Value end)
+
+-- [[ 2. 이동 기능 (플라이 & 스핀) ]] --
+local FlyToggle = Tabs.Movement:AddToggle("FlyToggle", {
+    Title = "비행 기능 (Fly)",
+    Default = false
+})
+FlyToggle:OnChanged(function(Value) FlyEnabled = Value end)
+
+local FlySlider = Tabs.Movement:AddSlider("FlySlider", {
+    Title = "비행 속도",
+    Description = "1부터 10,000까지 조절 가능합니다.",
+    Default = 50,
+    Min = 1,
+    Max = 10000,
+    Rounding = 0,
+    Callback = function(Value) FlySpeed = Value end
+})
+
+local SpinToggle = Tabs.Movement:AddToggle("SpinToggle", {
+    Title = "몸 분리 회전 (Spin Bot)",
+    Default = false,
+    Description = "상대방이 조준하기 어렵게 몸을 빠르게 회전시킵니다."
+})
+SpinToggle:OnChanged(function(Value) SpinEnabled = Value end)
+
+local SpinSlider = Tabs.Movement:AddSlider("SpinSlider", {
+    Title = "회전 속도",
+    Default = 50,
+    Min = 1,
+    Max = 200,
+    Rounding = 0,
+    Callback = function(Value) SpinSpeed = Value end
+})
+
+-- [[ 3. 핵심 물리 엔진 작동 로직 (자동 획득 추가됨) ]] --
+
+-- 플라이, 스핀 및 자동 획득 통합 로직
+rs.RenderStepped:Connect(function()
+    if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+        local hrp = lp.Character.HumanoidRootPart
+        local cam = workspace.CurrentCamera
+        local char = lp.Character
+        
+        -- 플라이 실행
+        if FlyEnabled then
+            local moveDir = Vector3.new(0, 0, 0)
+            if uis:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
+            if uis:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
+            if uis:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
+            if uis:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
+            if uis:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+            if uis:IsKeyDown(Enum.KeyCode.LeftControl) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+            
+            hrp.Velocity = moveDir * FlySpeed
+        end
+        
+        -- 스핀 실행
+        if SpinEnabled then
+            hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(SpinSpeed), 0)
+        end
+
+        -- [ 자동 아이템 획득 로직 ]
+        local humanoid = char:FindFirstChild("Humanoid")
+        local needsHealth = humanoid and humanoid.Health < humanoid.MaxHealth
+        for _, obj in pairs(workspace:GetChildren()) do
+            if obj.Name == "_drop" and obj:IsA("BasePart") then
+                if (collectHealth and obj:FindFirstChild("Health") and needsHealth) or (collectAmmo and obj:FindFirstChild("Ammo")) then
+                    if firetouchinterest then
+                        firetouchinterest(hrp, obj, 0)
+                        firetouchinterest(hrp, obj, 1)
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- [[ 4. 기존 Rivals 월뱅 로직 (유지) ]] --
+local isSpecialPlace = (g.PlaceId == 129604661913557 or g.PlaceId == 71874690745115)
+local currentTargetHitbox = nil
+local function chid_to_id(chid) return string.byte(chid or string.char(0)) end
+
+task.spawn(function()
+    while task.wait(0.05) do
+        if not idk then currentTargetHitbox = nil continue end
+        local myEnvAttr = lp:GetAttribute("EnvironmentID")
+        if myEnvAttr then
+            local myEnv = chid_to_id(myEnvAttr)
+            local myTeam = chid_to_id(lp:GetAttribute("TeamID"))
+            local found = nil
+            for _, v in ipairs(plrs:GetPlayers()) do
+                if v ~= lp and v.Character and v:GetAttribute("EnvironmentID") then
+                    local hEnv = chid_to_id(v:GetAttribute("EnvironmentID"))
+                    local hTeam = chid_to_id(v:GetAttribute("TeamID"))
+                    local valid = (isSpecialPlace and hEnv == myEnv) or (hEnv == myEnv and hTeam ~= myTeam)
+                    if valid then
+                        local hum = v.Character:FindFirstChild("Humanoid")
+                        if hum and hum.Health > 0 then
+                            found = v.Character:FindFirstChild("HitboxHeadSmall") or v.Character:FindFirstChild("HitboxHead") or v.Character:FindFirstChild("Head") or v.Character:FindFirstChild("HumanoidRootPart")
+                            if found then break end
+                        end
+                    end
+                end
+            end
+            currentTargetHitbox = found
+        end
+    end
+end)
+
+workspace.ChildAdded:Connect(function(v)
+    pcall(function()
+        if not idk then return end
+        local n = v.Name
+        if n == "CoreProjectile" or n == "Slingshot" or n == "Daggers" or n == "Bow" or n == "Paintball Gun" then
+            task.spawn(function()
+                local start = tick()
+                while v and v.Parent and (tick() - start) < 2 do
+                    if idk and currentTargetHitbox and firetouchinterest then
+                        v.CFrame = currentTargetHitbox.CFrame
+                        v.AssemblyLinearVelocity = Vector3.zero
+                        firetouchinterest(currentTargetHitbox, v, 0)
+                        firetouchinterest(currentTargetHitbox, v, 1)
+                    end
+                    task.wait()
+                end
+            end)
+        end
+    end)
+end)
+
+Fluent:Notify({ Title = "GPDMD Rivals", Content = "갓 모드 로딩 완료. 자동 획득 기능 활성화!", Duration = 5 })
